@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -159,16 +158,155 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>HPX Contracts Development Process</h1>
-            <div class="subtitle">Technical Report - GSoC 2025</div>
+            <h1>Building C++26 Contracts Support for HPX</h1>
+            <div class="subtitle">A Summer of Innovation - Google Summer of Code 2025 Complete Report</div>
         </div>
         
-        <div class="content">            <h2>Initial Setup</h2>
-            <p>To begin development, I initially faced challenges with the recommendation to work on Linux. As a compromise, I opted to use Windows Subsystem for Linux (WSL), which allowed me to leverage a Linux-like environment while staying on Windows.</p>
+        <div class="content">
+            <h2>Introduction</h2>
+            <p>This summer, I had the opportunity to work on implementing C++26 contracts support for HPX (High Performance ParalleX) as part of Google Summer of Code. My goal was to create a contracts module that could use native C++26 contract syntax when available, but fall back to regular assertions when the compiler doesn't support contracts yet. Later, we decided to also include an option of upgrading regular assertions to contract assertions.</p>
 
             <hr class="divider">
 
-            <h2>Step 1: Build and Test HPX Example</h2>
+            <h2>Understanding the HPX Module Structure</h2>
+            <p>First, I needed to understand how HPX structures its modules. HPX follows a clean separation of concerns with modules located in <span class="code-inline">libs/core/</span> and <span class="code-inline">libs/full/</span>. Each module maintains a consistent structure:</p>
+
+            <div class="code-block">libs/core/contracts/
+├── CMakeLists.txt              # Module configuration
+├── include/hpx/
+│   ├── contracts.hpp           # Public API header
+│   └── modules/contracts.hpp   # Implementation header
+├── tests/
+│   ├── unit/                   # Unit tests
+│   ├── performance/            # Performance tests
+│   └── regressions/            # Regression tests
+├── docs/
+│   └── index.rst              # Sphinx documentation
+└── README.md                  # Quick reference</div>
+
+            <p>This structure ensures that each module is self-contained, testable, and follows HPX's documentation standards.</p>
+
+            <hr class="divider">
+
+            <h2>Project Goals: Bridging Present and Future</h2>
+            <p>The contracts module had three primary objectives:</p>
+
+            <h3>1. Forward Compatibility</h3>
+            <p>Create an API that works today with assertion fallbacks but seamlessly transitions to native C++26 contracts when they become available. This meant designing macros that could adapt their behavior based on compiler capabilities.</p>
+
+            <h3>2. Flexible Configuration</h3>
+            <p>The module provides configuration flags that let you control how contracts behave. You can enable or disable contracts entirely, and there's even a flag that automatically upgrades existing <span class="code-inline">HPX_ASSERT</span> calls to use contract semantics when you want them to.</p>
+
+            <h3>3. Production Readiness</h3>
+            <p>Despite working with experimental language features, the module needed to be reliable enough for production use. This required testing across different compiler configurations and a fallback mode for when contracts aren't available.</p>
+
+            <hr class="divider">
+
+            <h2>Design Philosophy: Intelligent Adaptation</h2>
+            <p>The core design challenge was creating a system that could work across three different scenarios:</p>
+
+            <h3>Native C++26 Contracts Mode</h3>
+            <p>When the compiler supports contracts (<span class="code-inline">__cpp_contracts</span> defined), we use the real thing:</p>
+            <div class="code-block">#define HPX_PRE(x) pre(x)
+#define HPX_POST(x) post(x)
+#define HPX_CONTRACT_ASSERT(x) contract_assert(x)</div>
+
+            <h3>Fallback Mode</h3>
+            <p>When contracts are enabled but the compiler doesn't support them natively, everything maps to HPX's robust assertion system:</p>
+            <div class="code-block">#define HPX_PRE(x) HPX_ASSERT((x))
+#define HPX_POST(x) HPX_ASSERT((x))
+#define HPX_CONTRACT_ASSERT(x) HPX_ASSERT((x))</div>
+
+            <h3>Disabled Mode</h3>
+            <p>When contracts are disabled entirely, preconditions and postconditions become no-ops, but contract assertions remain available as enhanced assertions:</p>
+            <div class="code-block">#define HPX_PRE(x)
+#define HPX_POST(x)
+#define HPX_CONTRACT_ASSERT(x) HPX_ASSERT((x))</div>
+
+            <h3>Enhancing Existing Assertions</h3>
+            <p>One of the most elegant solutions came from understanding header inclusion order:</p>
+            <div class="code-block">#include &lt;hpx/assert.hpp&gt;  // HPX_ASSERT is now defined
+
+// Later in the file...
+#ifdef HPX_HAVE_ASSERTS_AS_CONTRACT_ASSERTS
+    // Override HPX_ASSERT to use contract assertions
+    #define HPX_ASSERT(x) HPX_CONTRACT_ASSERT(x)
+#endif</div>
+
+            <p>This single feature allows existing HPX code to automatically gain contract semantics without any modifications - just by including the contracts header and setting a configuration flag.</p>
+
+            <hr class="divider">
+
+            <h2>Advanced Features: Contract-Enhanced Assertions</h2>
+            <p>The real innovation was the <span class="code-inline">HPX_HAVE_ASSERTS_AS_CONTRACT_ASSERTS</span> feature. When enabled, every existing <span class="code-inline">HPX_ASSERT</span> in the codebase automatically becomes a contract assertion that adapts to the current mode:</p>
+
+            <div class="code-block">void process_data(std::vector&lt;int&gt;&amp; data, size_t index) {
+    HPX_ASSERT(index &lt; data.size());  // Becomes contract_assert() in native mode
+    data[index] *= 2;                 // Falls back to HPX_ASSERT() otherwise
+}</div>
+
+            <p>This means that thousands of existing assertions throughout HPX can be upgraded to contract semantics with a single configuration change.</p>
+
+            <hr class="divider">
+
+            <h2>Testing Strategy: Multi-Mode Validation</h2>
+            <p>Testing a system that behaves differently based on compiler capabilities required a sophisticated approach. I implemented automatic test mode detection using CMake:</p>
+
+            <h3>Compiler Capability Detection</h3>
+            <div class="code-block">add_hpx_config_test(HPX_HAVE_NATIVE_CONTRACTS
+    SOURCE cmake/tests/contracts.cpp
+    FLAGS ${hpx_contract_flags}
+    FILE ${CMAKE_CURRENT_BINARY_DIR}/hpx_have_native_contracts.hpp)</div>
+
+            <h3>Conditional Test Generation</h3>
+            <p>Based on the detection results, different test suites are built:</p>
+
+            <p><strong>Declaration Tests</strong> (Native C++26 mode):</p>
+            <div class="code-block">int factorial(int n) HPX_PRE(n &gt;= 0) HPX_POST(r: r &gt; 0) {
+    return n &lt;= 1 ? 1 : n * factorial(n - 1);
+}</div>
+
+            <p><strong>Fallback Tests</strong> (Assertion mode):</p>
+            <div class="code-block">int main() {
+    HPX_CONTRACT_ASSERT(true);  // Maps to HPX_ASSERT
+    HPX_PRE(true);              // Maps to HPX_ASSERT
+    HPX_POST(true);             // Maps to HPX_ASSERT
+}</div>
+
+            <p><strong>Disabled Tests</strong>: Verify that preconditions and postconditions become no-ops while contract assertions remain functional.</p>
+
+            <h3>Test Categories by Design</h3>
+            <p>Each test category validates different aspects:</p>
+            <ul>
+                <li><strong>Success tests</strong>: Verify contracts work correctly when conditions are met</li>
+                <li><strong>Failure tests</strong>: Ensure proper violation handling (these tests are expected to fail)</li>
+                <li><strong>Syntax tests</strong>: Validate that C++26 contract syntax compiles correctly</li>
+            </ul>
+
+            <hr class="divider">
+
+            <h2>Technical Challenges and Solutions</h2>
+
+            <h3>Challenge 1: Experimental Compiler Support</h3>
+            <p>Working with Eric Niebler's experimental Clang contracts implementation required building a custom toolchain. Memory limitations made local builds impossible.</p>
+            <p><strong>Solution</strong>: Containerized development environment with Docker, providing reproducible builds and easy distribution.</p>
+
+            <h3>Challenge 2: Runtime Contract Violation Handling</h3>
+            <p>Early testing revealed linker errors: <span class="code-inline">undefined reference to '__handle_contract_violation_v3'</span></p>
+            <p><strong>Solution</strong>: Implemented intelligent fallback that gracefully degrades to assertion-based contracts when runtime support is incomplete.</p>
+
+            <h3>Challenge 3: Cross-Mode Compatibility</h3>
+            <p>The module needed to work whether contracts were enabled, disabled, in native mode, or fallback mode.</p>
+            <p><strong>Solution</strong>: Layered configuration system with automatic capability detection and adaptive macro definitions.</p>
+
+            <hr class="divider">
+
+            <h2>Development Environment Setup Process</h2>
+
+            <h3>Initial Setup</h3>
+            <p>To begin development, I initially faced challenges with the recommendation to work on Linux. As a compromise, I opted to use Windows Subsystem for Linux (WSL), which allowed me to leverage a Linux-like environment while staying on Windows.</p>
+
+            <h3>Step 1: Build and Test HPX Example</h3>
             <p>I cloned the HPX repository into <span class="code-inline">~/dev/hpx</span> and created a separate build directory outside the source tree. Using GCC, I configured and built an example project as follows:</p>
 
             <div class="code-block">mkdir -p ~/hpx_build
@@ -187,9 +325,7 @@ ninja hello_world_2
                 <strong>✓ Success:</strong> The build was successful, and running the <span class="code-inline">hello_world_2</span> example correctly output "Hello World!", confirming that the HPX environment was functional.
             </div>
 
-            <hr class="divider">
-
-            <h2>Step 2: Find a Compiler Supporting C++26 Contracts</h2>
+            <h3>Step 2: Find a Compiler Supporting C++26 Contracts</h3>
             <p>Since contracts are part of the upcoming C++26 standard, I needed a compiler with experimental support. Research revealed that Eric Niebler maintains a branch of LLVM with contracts support via Clang. The repository is available <a href="https://github.com/efcs/llvm-project/tree/contracts-nightly">here</a>.</p>
 
             <h3>Initial Compiler Build Attempt</h3>
@@ -208,9 +344,7 @@ cmake -G Ninja ../llvm \
                 <strong>⚠ Issue:</strong> The build process failed due to extensive memory requirements. To circumvent this, I used a pre-built Docker image containing Clang with contracts support.
             </div>
 
-            <hr class="divider">
-
-            <h2>Step 3: Docker Environment Setup</h2>
+            <h3>Step 3: Docker Environment Setup</h3>
             <p>I ran the pre-built Docker container as follows:</p>
 
             <div class="code-block">docker run -it -v ~/dev/hpx:/mnt/hpx pansysk75/clang-contracts:latest /bin/bash</div>
@@ -235,9 +369,7 @@ apt install -y libc++-dev libc++abi-dev libboost-all-dev libgoogle-perftools-dev
 export CC=/opt/clang-nightly/bin/clang
 export CXX=/opt/clang-nightly/bin/clang++</div>
 
-            <hr class="divider">
-
-            <h2>Step 4: HPX Integration Testing</h2>
+            <h3>Step 4: HPX Integration Testing</h3>
             <p>I modified the <span class="code-inline">hello_world_2</span> example to test contract syntax by adding compiler flags:</p>
 
             <div class="code-block">cmake /src/dev/hpx -GNinja \
@@ -262,9 +394,7 @@ undefined reference to `__handle_contract_violation_v3'</div>
 
             <p>This highlighted the need for linking against the proper standard library that provides the default violation handler.</p>
 
-            <hr class="divider">
-
-            <h2>Step 5: Final Integration with HPX Contracts</h2>
+            <h3>Step 5: Final Integration with HPX Contracts</h3>
             <p>I added <span class="code-inline">HPX_WITH_CONTRACTS</span> to the HPX codebase to allow flexible enabling and disabling of contracts. The final build command was:</p>
 
             <div class="code-block">cmake /mnt/hpx -GNinja \
@@ -289,6 +419,85 @@ ninja -j$(nproc)</div>
 
             <hr class="divider">
 
+            <h2>Development Environment: Docker-Powered Innovation</h2>
+            <p>Setting up a development environment for experimental C++26 features proved challenging. The solution was a custom Docker image:</p>
+
+            <div class="code-block">docker run -it -v ~/dev/hpx:/mnt/hpx my-hpx-clang-contracts:v1 /bin/bash</div>
+
+            <p>This environment included:</p>
+            <ul>
+                <li>Clang with experimental contracts support</li>
+                <li>Configured HPX build system</li>
+                <li>All necessary dependencies</li>
+                <li>Reproducible configuration for continued development</li>
+            </ul>
+
+            <hr class="divider">
+
+            <h2>Results and Impact</h2>
+            <p>The contracts module successfully delivers on all its goals:</p>
+
+            <div class="success">
+                <strong>✅ Forward Compatibility Achieved:</strong> The module seamlessly adapts between experimental contracts and production assertions, providing a clear migration path to C++26.
+            </div>
+
+            <div class="success">
+                <strong>✅ Flexible Configuration Delivered:</strong> Existing HPX code gains contract benefits with just a configuration flag - no source code changes required.
+            </div>
+
+            <div class="success">
+                <strong>✅ Production Ready:</strong> Comprehensive testing across all modes ensures reliability regardless of compiler capabilities.
+            </div>
+
+            <div class="success">
+                <strong>✅ HPX Standards Compliant:</strong> Full integration with HPX's build system, documentation standards, and testing framework.
+            </div>
+
+            <hr class="divider">
+
+            <h2>Real-World Usage Examples</h2>
+            <p>The module enables elegant contract specifications:</p>
+
+            <div class="code-block">// Function with comprehensive contracts
+template&lt;typename T&gt;
+T safe_divide(T numerator, T denominator)
+    HPX_PRE(denominator != T{0})
+    HPX_POST(r: std::abs(r * denominator - numerator) &lt; std::numeric_limits&lt;T&gt;::epsilon())
+{
+    return numerator / denominator;
+}
+
+// Enhanced assertions throughout existing code
+void parallel_for_each(auto&amp; container, auto func) {
+    HPX_CONTRACT_ASSERT(!container.empty());  // Adapts to available contract mode
+    // Implementation...
+}</div>
+
+            <hr class="divider">
+
+            <h2>Lessons Learned</h2>
+            <p>This project taught me several valuable lessons:</p>
+
+            <ul>
+                <li><strong>Experimental Features Need Robust Fallbacks</strong>: Working with pre-standard features requires careful planning for compatibility and graceful degradation.</li>
+                <li><strong>Include Order Matters</strong>: Sometimes the simplest solutions come from understanding the fundamentals - like header inclusion order enabling clean macro overrides.</li>
+                <li><strong>Testing Multi-Mode Systems is Complex</strong>: When your system behaves differently based on configuration, your testing strategy must be equally sophisticated.</li>
+                <li><strong>Documentation During Development</strong>: Writing clear documentation as you develop improves the design itself - not just the end result.</li>
+            </ul>
+
+            <hr class="divider">
+
+            <h2>Future Directions</h2>
+            <p>As C++26 contracts move toward standardization, this module provides HPX with:</p>
+            <ul>
+                <li>A tested migration path to standard contracts</li>
+                <li>Immediate benefits from contract-like semantics</li>
+                <li>A foundation for further contract system development</li>
+                <li>Experience with contract-based programming in high-performance parallel code</li>
+            </ul>
+
+            <hr class="divider">
+
             <h2>Final Results</h2>
             <div class="success">
                 <strong>✓ Success:</strong> The HPX build completed successfully. Running the modified <span class="code-inline">hello_world_2</span> example triggered the default contract violation handler as expected, confirming correct integration.
@@ -301,11 +510,24 @@ docker run -it -v ~/dev/hpx:/mnt/hpx my-hpx-clang-contracts:v1</div>
 
             <p>This image contains a fully configured HPX build with Clang contracts support, providing a reproducible environment for further testing and development.</p>
 
+            <hr class="divider">
+
+            <h2>Conclusion</h2>
+            <p>Building the HPX contracts module was an incredible journey through cutting-edge C++ language features, sophisticated build systems, and real-world software engineering challenges. The result is a production-ready module that brings the future of C++ contracts to HPX today, while ensuring a smooth transition to the standardized version tomorrow.</p>
+
+            <p>The module demonstrates that experimental language features can be safely integrated into production libraries through careful design of abstraction layers, comprehensive testing, and intelligent fallback mechanisms. It's now ready for integration into the main HPX repository and provides a foundation for the C++ community's exploration of contract-based programming.</p>
+
+            <div class="success">
+                <strong>Complete implementation available at:</strong> <a href="https://github.com/AlexPapadakis/hpx/tree/contract_test">https://github.com/AlexPapadakis/hpx/tree/contract_test</a>
+            </div>
+
         </div>
 
         <div class="footer">
-            <p>HPX Contracts Development Process | Google Summer of Code 2025</p>
-            <p>This report documents the technical setup and integration process for C++26 contracts support in HPX.</p>
+            <p><strong>Building C++26 Contracts Support for HPX: A Summer of Innovation</strong></p>
+            <p>Google Summer of Code 2025 - Alexandros Papadakis</p>
+            <p>This comprehensive report documents the complete journey from initial setup through final implementation of C++26 contracts support in HPX.</p>
+            <p><em>Special thanks to the HPX development team and the Google Summer of Code program for making this innovative project possible!</em></p>
         </div>
     </div>
 </body>
