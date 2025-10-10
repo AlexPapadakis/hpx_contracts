@@ -1,1 +1,312 @@
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HPX Contracts Development Process</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f8f9fa;
+            padding: 0;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+            min-height: 100vh;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 3rem 2rem;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 300;
+            margin-bottom: 0.5rem;
+            letter-spacing: -1px;
+        }
+
+        .header .subtitle {
+            font-size: 1.1rem;
+            opacity: 0.9;
+            font-weight: 300;
+        }
+
+        .content {
+            padding: 2rem;
+        }
+
+        h2 {
+            color: #2c3e50;
+            font-size: 1.8rem;
+            font-weight: 600;
+            margin: 2rem 0 1rem 0;
+            padding-bottom: 0.5rem;
+            border-bottom: 3px solid #667eea;
+        }
+
+        h3 {
+            color: #34495e;
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin: 1.5rem 0 0.8rem 0;
+        }
+
+        p {
+            margin-bottom: 1rem;
+            text-align: justify;
+            line-height: 1.7;
+        }
+
+        .code-block {
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 1rem;
+            margin: 1rem 0;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 0.9rem;
+            overflow-x: auto;
+            line-height: 1.4;
+        }
+
+        .code-inline {
+            background-color: #f1f3f4;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 0.9em;
+            color: #d73a49;
+        }
+
+        ul {
+            margin: 1rem 0;
+            padding-left: 2rem;
+        }
+
+        li {
+            margin-bottom: 0.5rem;
+            line-height: 1.6;
+        }
+
+        .highlight {
+            background-color: #fff3cd;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-weight: 600;
+        }
+
+        .divider {
+            border: none;
+            height: 2px;
+            background: linear-gradient(to right, transparent, #667eea, transparent);
+            margin: 2rem 0;
+        }
+
+        .success {
+            color: #155724;
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            padding: 0.75rem;
+            border-radius: 4px;
+            margin: 1rem 0;
+        }
+
+        .warning {
+            color: #856404;
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 0.75rem;
+            border-radius: 4px;
+            margin: 1rem 0;
+        }
+
+        .footer {
+            background-color: #f8f9fa;
+            padding: 2rem;
+            border-top: 1px solid #e9ecef;
+            text-align: center;
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+
+        a {
+            color: #667eea;
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>HPX Contracts Development Process</h1>
+            <div class="subtitle">Technical Report - GSoC 2025</div>
+        </div>
+        
+        <div class="content">            <h2>Initial Setup</h2>
+            <p>To begin development, I initially faced challenges with the recommendation to work on Linux. As a compromise, I opted to use Windows Subsystem for Linux (WSL), which allowed me to leverage a Linux-like environment while staying on Windows.</p>
+
+            <hr class="divider">
+
+            <h2>Step 1: Build and Test HPX Example</h2>
+            <p>I cloned the HPX repository into <span class="code-inline">~/dev/hpx</span> and created a separate build directory outside the source tree. Using GCC, I configured and built an example project as follows:</p>
+
+            <div class="code-block">mkdir -p ~/hpx_build
+cd ~/hpx_build
+
+cmake -GNinja -DCMAKE_BUILD_TYPE=Release \
+  -DHPX_WITH_MALLOC=jemalloc \
+  -DHPX_WITH_EXAMPLES=ON \
+  -DCMAKE_INSTALL_PREFIX=~/packages/hpx \
+  ~/dev/hpx
+
+ninja hello_world_2
+./bin/hello_world_2</div>
+
+            <div class="success">
+                <strong>✓ Success:</strong> The build was successful, and running the <span class="code-inline">hello_world_2</span> example correctly output "Hello World!", confirming that the HPX environment was functional.
+            </div>
+
+            <hr class="divider">
+
+            <h2>Step 2: Find a Compiler Supporting C++26 Contracts</h2>
+            <p>Since contracts are part of the upcoming C++26 standard, I needed a compiler with experimental support. Research revealed that Eric Niebler maintains a branch of LLVM with contracts support via Clang. The repository is available <a href="https://github.com/efcs/llvm-project/tree/contracts-nightly">here</a>.</p>
+
+            <h3>Initial Compiler Build Attempt</h3>
+            <p>I attempted to build the compiler from source:</p>
+
+            <div class="code-block">git clone https://github.com/efcs/llvm-project.git ~/dev/clang-compiler
+cd ~/dev/clang-compiler/build
+cmake -G Ninja ../llvm \
+  -DLLVM_ENABLE_PROJECTS=clang \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DLLVM_ENABLE_ASSERTIONS=ON \
+  -DLLVM_ENABLE_LTO=OFF \
+  -DLLVM_ENABLE_RTTI=OFF</div>
+
+            <div class="warning">
+                <strong>⚠ Issue:</strong> The build process failed due to extensive memory requirements. To circumvent this, I used a pre-built Docker image containing Clang with contracts support.
+            </div>
+
+            <hr class="divider">
+
+            <h2>Step 3: Docker Environment Setup</h2>
+            <p>I ran the pre-built Docker container as follows:</p>
+
+            <div class="code-block">docker run -it -v ~/dev/hpx:/mnt/hpx pansysk75/clang-contracts:latest /bin/bash</div>
+
+            <p>Inside the container, I tested the basic contract syntax:</p>
+
+            <div class="code-block">cd /src
+clang++ -fcontracts -fcontract-evaluation-semantic=enforce test_contracts.cpp -o test_contracts</div>
+
+            <p>To prepare the development environment for HPX, I committed the container state:</p>
+
+            <div class="code-block">docker commit confident_wescoff my-hpx-clang-contracts:v1
+docker run -it my-hpx-clang-contracts:v1 /bin/bash</div>
+
+            <p>Inside the container, I installed necessary dependencies and set environment variables:</p>
+
+            <div class="code-block">cd /root
+mkdir -p hpx/build/clang_nightly
+apt update
+apt install -y libc++-dev libc++abi-dev libboost-all-dev libgoogle-perftools-dev
+
+export CC=/opt/clang-nightly/bin/clang
+export CXX=/opt/clang-nightly/bin/clang++</div>
+
+            <hr class="divider">
+
+            <h2>Step 4: HPX Integration Testing</h2>
+            <p>I modified the <span class="code-inline">hello_world_2</span> example to test contract syntax by adding compiler flags:</p>
+
+            <div class="code-block">cmake /src/dev/hpx -GNinja \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DHPX_WITH_CXX_STANDARD=23 \
+  -DHPX_WITH_CXX11_ATOMIC_LIBRARIES=atomic \
+  -DHPX_WITH_TESTS=OFF \
+  -DHPX_WITH_FETCH_ASIO=ON \
+  -DHPX_WITH_EXAMPLES=ON \
+  -DCMAKE_CXX_FLAGS="-stdlib=libc++ -std=c++23 -fcontracts"
+
+ninja hello_world_2</div>
+
+            <p><strong>Testing Results:</strong></p>
+            <ul>
+                <li><span class="highlight">Success case</span>: Using <span class="code-inline">pre(true)</span> compiled and ran without issues.</li>
+                <li><span class="highlight">Failure case</span>: Using <span class="code-inline">pre(false)</span> caused a linker error:</li>
+            </ul>
+
+            <div class="code-block">clang++: error: linker command failed with exit code 1
+undefined reference to `__handle_contract_violation_v3'</div>
+
+            <p>This highlighted the need for linking against the proper standard library that provides the default violation handler.</p>
+
+            <hr class="divider">
+
+            <h2>Step 5: Final Integration with HPX Contracts</h2>
+            <p>I added <span class="code-inline">HPX_WITH_CONTRACTS</span> to the HPX codebase to allow flexible enabling and disabling of contracts. The final build command was:</p>
+
+            <div class="code-block">cmake /mnt/hpx -GNinja \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DHPX_WITH_CXX_STANDARD=23 \
+  -DHPX_WITH_CXX11_ATOMIC_LIBRARIES=atomic \
+  -DHPX_WITH_TESTS=OFF \
+  -DHPX_WITH_FETCH_ASIO=ON \
+  -DHPX_WITH_EXAMPLES=ON \
+  <span class="highlight">-DHPX_WITH_CONTRACTS=ON</span> \
+  -DCMAKE_CXX_FLAGS="-stdlib=libc++ -std=c++23 -fcontracts"
+
+ninja -j$(nproc)</div>
+
+            <h3>Contract Compiler Flags</h3>
+            <p>The Clang nightly build supports the following options:</p>
+            <ul>
+                <li>Enable contracts: <span class="code-inline">-std=c++23 -fcontracts -stdlib=libc++</span></li>
+                <li>Control evaluation behavior: <span class="code-inline">-fcontract-evaluation-semantic=&lt;ignore|observe|enforce|quick_enforce&gt;</span></li>
+                <li>Configure standard library contract behavior: <span class="code-inline">-fcontract-group-evaluation-semantic=std=&lt;...&gt;</span></li>
+            </ul>
+
+            <hr class="divider">
+
+            <h2>Final Results</h2>
+            <div class="success">
+                <strong>✓ Success:</strong> The HPX build completed successfully. Running the modified <span class="code-inline">hello_world_2</span> example triggered the default contract violation handler as expected, confirming correct integration.
+            </div>
+
+            <p>The environment was preserved in a Docker image for future development:</p>
+
+            <div class="code-block">docker commit quizzical_merkle my-hpx-clang-contracts:v1
+docker run -it -v ~/dev/hpx:/mnt/hpx my-hpx-clang-contracts:v1</div>
+
+            <p>This image contains a fully configured HPX build with Clang contracts support, providing a reproducible environment for further testing and development.</p>
+
+        </div>
+
+        <div class="footer">
+            <p>HPX Contracts Development Process | Google Summer of Code 2025</p>
+            <p>This report documents the technical setup and integration process for C++26 contracts support in HPX.</p>
+        </div>
+    </div>
+</body>
+</html>
