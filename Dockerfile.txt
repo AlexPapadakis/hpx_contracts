@@ -1,0 +1,112 @@
+# Use a base image. Ubuntu is a good choice for general Linux development.
+FROM ubuntu:latest
+
+# Set environment variables for non-interactive apt operations
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Update package lists and install necessary dependencies for Clang
+# These include common build tools and libraries that Clang might link against.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    wget \
+    tar \
+    xz-utils \
+    build-essential \
+    libstdc++-12-dev \
+    libgcc-12-dev \
+    pkg-config \
+    ninja-build \
+    cmake \
+    git \
+    openssh-client \
+    ca-certificates \
+    python3 \
+    # Add any other dependencies specific to your nightly build or usage
+    && \
+    rm -rf /var/lib/apt/lists/*
+
+# Define an argument for the LLVM/Clang nightly build URL.
+ARG LLVM_GIT="https://github.com/efcs/llvm-project.git"
+ARG LLVM_BRANCH="contracts-nightly"
+
+# Define where Clang will be installed
+ENV LLVM_INSTALL_DIR="/opt/clang-nightly"
+ENV PATH="${LLVM_INSTALL_DIR}/bin:${PATH}"
+ENV LD_LIBRARY_PATH="${LLVM_INSTALL_DIR}/lib:${LD_LIBRARY_PATH}"
+ENV CPATH="${LLVM_INSTALL_DIR}/include:${CPATH}"
+
+
+RUN mkdir -p ${LLVM_INSTALL_DIR}
+RUN git clone --depth 1 --branch ${LLVM_BRANCH} ${LLVM_GIT} ${LLVM_INSTALL_DIR}/llvm-project
+
+# Change working directory to the LLVM project
+WORKDIR ${LLVM_INSTALL_DIR}/llvm-project
+# Create a build directory and change into it
+RUN mkdir -p build && cd build
+# Configure the build using CMake
+RUN cmake -G "Ninja" \
+    -DLLVM_ENABLE_PROJECTS="clang" \
+    -DLLVM_ENABLE_RUNTIMES="compiler-rt;libcxx;libcxxabi;libunwind" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=${LLVM_INSTALL_DIR} \
+    -DLLVM_ENABLE_RTTI=ON \
+    -DLLVM_ENABLE_EH=ON \
+    -DLLVM_TARGETS_TO_BUILD="X86" \
+    -S ${LLVM_INSTALL_DIR}/llvm-project/llvm \
+    -B .
+
+
+# Build and install Clang
+RUN cmake --build . --target cxx
+RUN cmake --build . --target cxxabi
+RUN cmake --build . --target compiler-rt
+
+RUN cmake --build . --target install-cxx
+RUN cmake --build . --target install-cxxabi
+RUN cmake --build . --target install-compiler-rt
+
+# Install the built Clang and its components
+RUN cmake --build . --target install
+
+# Clean up the source directory to reduce image size
+RUN rm -rf ${LLVM_INSTALL_DIR}/llvm-project
+
+
+
+# Final stage: Create a minimal image with the installed Clang
+FROM ubuntu:latest
+
+ENV LLVM_INSTALL_DIR="/opt/clang-nightly"
+
+# Copy the Clang installation (exclude the source code to keep the image size small)
+COPY --from=0 ${LLVM_INSTALL_DIR} ${LLVM_INSTALL_DIR}
+
+# Set environment variables for the Clang installation
+ENV PATH="${LLVM_INSTALL_DIR}/bin:${PATH}"
+ENV LD_LIBRARY_PATH="${LLVM_INSTALL_DIR}/lib:${LLVM_INSTALL_DIR}/lib/x86_64-unknown-linux-gnu:${LD_LIBRARY_PATH}"
+ENV CPATH="${LLVM_INSTALL_DIR}/include:${CPATH}"
+
+# Install dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    wget \
+    tar \
+    xz-utils \
+    build-essential \
+    libstdc++-12-dev \
+    libgcc-12-dev \
+    pkg-config \
+    ninja-build \
+    cmake \
+    git \
+    openssh-client \
+    ca-certificates \
+    python3 \
+    && \
+    rm -rf /var/lib/apt/lists/*
+
+# Verify the installation
+RUN clang --version
+
+# Set the default command when the container starts (optional, for convenience)
+CMD ["bash"]
