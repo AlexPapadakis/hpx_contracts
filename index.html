@@ -433,7 +433,7 @@ add_hpx_config_test(
 # - Only evaluation semantic flag needed to control contract behavior
 # - Upgrades all HPX_ASSERT calls to contract assertions</pre>
 
-            <h4>Example 2: Current Experimental Build (EricWF's Clang)</h4>
+            <h4>Example 2: Current Experimental Build (EricWF's Clang fork)</h4>
             <pre class="code-block">cmake /path/to/hpx -GNinja \
   -DCMAKE_BUILD_TYPE=Debug \
   -DCMAKE_CXX_STANDARD=23 \
@@ -450,7 +450,7 @@ add_hpx_config_test(
 # - Needs -stdlib=libc++ for proper standard library support
 # - Falls back to assertions when contracts fail to link</pre>
 
-            <h5>EricWF's Clang Contract Flags</h5>
+            <h5>EricWF's Clang fork Contract Flags</h5>
             <p>The experimental Clang nightly build supports these contract-specific options:</p>
             <ul>
                 <li>Enable contracts: <span class="code-inline">-std=c++23 -fcontracts -stdlib=libc++</span></li>
